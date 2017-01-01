@@ -35,7 +35,7 @@ I2CUART_OBJS = main.o \
 
 all: $(FILENAME).bin
 
-i2c2uart.axf: $(FILENAME).ld $(I2CUART_OBJS)
+$(FILENAME).axf: $(FILENAME).ld $(I2CUART_OBJS)
 	@$(LD) -o $@ $(LDFLAGS) -T $(LINKERSCRIPT) $(I2CUART_OBJS) $(LIBGCC)
 	-@echo ""
 	@$(SIZE) $(FILENAME).axf
@@ -44,7 +44,7 @@ clean:
 	@rm -f *.o *.d
 	@rm -f $(FILENAME).axf $(FILENAME).hex $(FILENAME).bin
 
-%.bin:%.axf
+%.bin: %.axf
 	-@echo ""
 	-@echo "Generating $(FILENAME).hex (FlashMagic, etc.)"
 	@$(OBJCOPY) --strip-unneeded -O ihex $(FILENAME).axf $(FILENAME).hex
