@@ -571,6 +571,9 @@ uint8_t reg_tx_stat = 0;
 
 /* ----- Core application ----- */
 
+void apply(void);
+void revert(void);
+
 int main(void) {
 	/* ----- Clock setup ----- */
 
@@ -707,6 +710,16 @@ int main(void) {
 	/* ----- Main loop ----- */
 
 	while(1) {
+		/* Check control commands */
+		if (reg_mcr & REG_MCR_APPLY) {
+			apply();
+			reg_mcr &= ~REG_MCR_APPLY;
+		}
+		if (reg_mcr & REG_MCR_REVERT) {
+			revert();
+			reg_mcr &= ~REG_MCR_REVERT;
+		}
+
 		/* Check interrupt flags */
 		if (reg_rx_stat)
 			reg_msr |= REG_MSR_RX_INT;
@@ -791,6 +804,32 @@ void apply(void) {
 	return;
 invalid:
 	reg_msr |= REG_MSR_CFG_ERR;
+}
+
+/*!
+ * Revert the configuration settings to what is presently set.
+ */
+void revert(void) {
+	uint8_t frame = 0;
+
+	switch ((LPC_USART0->CFG >> 2) & 0x03) {
+		case 0:
+			frame |= (REG_FRAME_SZ_7BIT) << REG_FRAME_SZ_OFFSET;
+			break;
+		case 1:
+			frame |= (REG_FRAME_SZ_8BIT) << REG_FRAME_SZ_OFFSET;
+			break;
+		default:
+			break;
+	}
+
+	frame |= ((LPC_USART0->CFG >> 4) & REG_FRAME_PARITY_MASK)
+			<< REG_FRAME_PARITY_OFFSET;
+	if (LPC_USART0->CFG & (1 << 6))
+		frame |= (REG_FRAME_STOP_2BIT << REG_FRAME_STOP_OFFSET);
+
+	reg_baud = cfg_baud;
+	reg_frame = frame;
 }
 
 
