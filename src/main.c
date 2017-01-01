@@ -40,33 +40,23 @@ const static char i2c_ident[] = "VK4MSL I2CUART";
 
 /* ----- I2C slave state ----- */
 
-#define I2C_STATE_IDLE	(0x00)	/*!< Waiting to receive ID */
-#define I2C_STATE_IDRD	(0x10)	/*!< ID + Read request received */
-#define I2C_STATE_READ	(0x11)	/*!< Read data */
-#define I2C_STATE_IDWR	(0x20)	/*!< ID + Write request received */
-#define I2C_STATE_WRITE	(0x21)	/*!< Write data */
-
 /*!
- * I2C slave state machine.  The state machine is in one of 5 states:
- * - Idle: that is neither reading or writing
- * - Handling an I2C read: We just heard our ID with the R/W bit set to R,
- *   and will start writing register data out starting at the address in
- *   i2c_reg_addr.
- * - Handling an I2C write: We just heard our ID with the R/W bit set to W,
- *   the next byte will overwrite the address in i2c_reg_addr.
- * - Streaming data from registers: We read a byte from the register,
- *   increment i2c_reg_addr, then send that byte back.
- * - Streaming data to registers: We read a byte from I2C, write it to
- *   the current register then increment i2c_reg_addr.
+ * Await new register address.  If set, then the next written byte is to
+ * be interpreted as a new register address, we should store this in
+ * `i2c_reg_addr` below and `ACK` the byte.
  */
-uint8_t i2c_state	= I2C_STATE_IDLE;
+uint8_t i2c_rx_reg_addr = 0;
 
 /*!
- * The last requested write address.  This is incremented with each
- * data byte read or written, and gets overwritten by the first byte
- * received after an ID+W byte.
+ * The last requested address.  This is incremented with each data byte
+ * read or written, and gets overwritten by the first byte received after
+ * an ID+W byte.
  */
 uint8_t i2c_reg_addr	= 0;
+
+#define SLVSTATE_ADDR	(0)	/*!< Address received */
+#define SLVSTATE_M2S	(1)	/*!< Master to Slave transfer */
+#define SLVSTATE_S2M	(2)	/*!< Slave to Master transfer */
 
 /* ----- I2C helpers ----- */
 
@@ -224,23 +214,27 @@ int main(void) {
 void I2C_IRQHandler(void) {
 	/* I2C has summoned us!  What is it this time? */
 	uint8_t state = (LPC_I2C->STAT >> 9) & 0x03;
-	if (state == 0) {
+	if (state == SLVSTATE_ADDR) {
 		/*
 		 * This is just the address + r/w, make sure it's us
 		 * then just ACK it, or NAK it if it isn't.
 		 */
 		uint8_t idx = (LPC_I2C->STAT >> 12) & 0x03;
-		if (idx)
+		if (idx) {
 			/* We're not using that index */
 			I2C_NAK;
-		else
+		} else {
+			/* If writing, expect a register address */
+			i2c_rx_reg_addr = 1;
 			I2C_ACK;
+		}
 
 		I2C_NEXT;
 		return;
-	} else if (state == 1) {
+	} else if (state == SLVSTATE_S2M) {
 		/* Read the next byte off the register bus */
 		uint8_t byte = 0;
+		i2c_rx_reg_addr = 0;
 		if (!(i2c_reg_addr & 0xf0)) {
 			switch(i2c_reg_addr) {
 				case 0x0e:
@@ -262,16 +256,26 @@ void I2C_IRQHandler(void) {
 			byte = 0xff;
 		}
 		LPC_I2C->SLVDAT = byte;
-	} else if (state == 2) {
-		/* Write the incoming byte to the given address */
-		if (!(i2c_reg_addr & 0xf0)) {
-			/* Read only addresses */
-			I2C_NAK;
-			goto done;
-		} else if (!(i2c_reg_addr & 0x80)) {
-			/* TODO */
-			I2C_NAK;
-			goto done;
+	} else if (state == SLVSTATE_M2S) {
+		if (i2c_rx_reg_addr) {
+			/* This is a register address */
+			i2c_reg_addr = LPC_I2C->SLVDAT;
+			i2c_rx_reg_addr = 0;
+			/* Do not increment, ACK and return */
+			I2C_ACK;
+			I2C_NEXT;
+			return;
+		} else {
+			/* Write the incoming byte to the given address */
+			if (!(i2c_reg_addr & 0xf0)) {
+				/* Read only addresses */
+				I2C_NAK;
+				goto done;
+			} else if (!(i2c_reg_addr & 0x80)) {
+				/* TODO */
+				I2C_NAK;
+				goto done;
+			}
 		}
 	}
 done:
