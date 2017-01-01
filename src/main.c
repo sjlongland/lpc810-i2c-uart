@@ -78,9 +78,6 @@ uint8_t i2c_reg_addr	= 0;
 #define I2C_NAK 					\
 	LPC_I2C->SLVCTL |= (1 << 1)
 
-#define I2C_ACK 					\
-	LPC_I2C->SLVCTL &= ~(1 << 1)
-
 #define I2C_NEXT 					\
 	LPC_I2C->SLVCTL |= (1 << 0)
 
@@ -581,7 +578,6 @@ void I2C_IRQHandler(void) {
 		} else {
 			/* If writing, expect a register address */
 			i2c_rx_reg_addr = 1;
-			I2C_ACK;
 		}
 
 		goto done_noinc;
@@ -700,8 +696,12 @@ void I2C_IRQHandler(void) {
 			/* TODO */
 			byte = 0xff;
 		} else {
-			/* Read from FIFO: TODO */
-			byte = 0xff;
+			/* Read from FIFO */
+			int16_t b = fifo_dequeue(&rx_fifo);
+			if (b < 0)
+				byte = 0xff;
+			else
+				byte = b & 0xff;
 		}
 		LPC_I2C->SLVDAT = byte;
 	} else if (state == SLVSTATE_M2S) {
@@ -709,8 +709,7 @@ void I2C_IRQHandler(void) {
 			/* This is a register address */
 			i2c_reg_addr = LPC_I2C->SLVDAT;
 			i2c_rx_reg_addr = 0;
-			/* Do not increment, ACK and return */
-			I2C_ACK;
+			/* Do not increment */
 			goto done_noinc;
 		} else {
 			/* Write the incoming byte to the given address */
@@ -809,7 +808,9 @@ void I2C_IRQHandler(void) {
 				}
 			} else if (!(i2c_reg_addr & 0x80)) {
 				/* TODO */
-				I2C_NAK;
+				if (!fifo_enqueue(&tx_fifo,
+						LPC_I2C->SLVDAT))
+					I2C_NAK;
 				goto done;
 			}
 		}
