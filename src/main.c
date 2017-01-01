@@ -20,6 +20,151 @@
 
 #include "LPC8xx.h"
 
+/*!
+ * Baud rate divisor settings.  This maps the baud rate to the register
+ * settings needed for the MCUs serial port baud rate settings.
+ */
+struct baud_t {
+	uint32_t baudrate;
+	uint8_t uartclkdiv;
+	uint8_t uartfrgdiv;
+	uint8_t uartfrgmult;
+	uint8_t brgval;
+};
+
+/*!
+ * Baud rate look-up table, for 12MHz internal RC oscillator.
+ */
+const static struct baud_t standard_rates[] = {
+	{
+		.baudrate	= 110,
+		.uartclkdiv	= 238,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 226,
+		.brgval		= 242
+	},
+	{
+		.baudrate	= 134,
+		.uartclkdiv	= 242,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 224,
+		.brgval		= 196
+	},
+	{
+		.baudrate	= 150,
+		.uartclkdiv	= 250,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 225,
+		.brgval		= 169
+	},
+	{
+		.baudrate	= 200,
+		.uartclkdiv	= 250,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 195,
+		.brgval		= 135
+	},
+	{
+		.baudrate	= 300,
+		.uartclkdiv	= 250,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 225,
+		.brgval		= 84
+	},
+	{
+		.baudrate	= 600,
+		.uartclkdiv	= 250,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 153,
+		.brgval		= 49
+	},
+	{
+		.baudrate	= 1200,
+		.uartclkdiv	= 250,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 153,
+		.brgval		= 24
+	},
+	{
+		.baudrate	= 2400,
+		.uartclkdiv	= 250,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 85,
+		.brgval		= 14
+	},
+	{
+		.baudrate	= 4800,
+		.uartclkdiv	= 250,
+		.uartfrgdiv	= 0,
+		.uartfrgmult	= 0,
+		.brgval		= 9
+	},
+	{
+		.baudrate	= 9600,
+		.uartclkdiv	= 250,
+		.uartfrgdiv	= 0,
+		.uartfrgmult	= 0,
+		.brgval		= 4
+	},
+	{
+		.baudrate	= 19200,
+		.uartclkdiv	= 125,
+		.uartfrgdiv	= 0,
+		.uartfrgmult	= 0,
+		.brgval		= 4
+	},
+	{
+		.baudrate	= 38400,
+		.uartclkdiv	= 101,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 8,
+		.brgval		= 2
+	},
+	{
+		.baudrate	= 57600,
+		.uartclkdiv	= 25,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 170,
+		.brgval		= 4
+	},
+	{
+		.baudrate	= 115200,
+		.uartclkdiv	= 101,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 8,
+		.brgval		= 0
+	},
+	{
+		.baudrate	= 230400,
+		.uartclkdiv	= 29,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 203,
+		.brgval		= 0
+	},
+	{
+		.baudrate	= 460800,
+		.uartclkdiv	= 4,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 77,
+		.brgval		= 4
+	},
+	{
+		.baudrate	= 921600,
+		.uartclkdiv	= 2,
+		.uartfrgdiv	= 255,
+		.uartfrgmult	= 77,
+		.brgval		= 4
+	},
+	/* End of list */
+	{
+		.baudrate	= 0,
+		.uartclkdiv	= 0,
+		.uartfrgdiv	= 0,
+		.uartfrgmult	= 0,
+		.brgval		= 0,
+	}
+};
+
 /* ----- Interrupt helper macros ----- */
 
 #define ENABLE_NINTERRUPT(en) \
@@ -559,7 +704,89 @@ int main(void) {
 	/* ----- Main loop ----- */
 
 	while(1) {
+		/* Check interrupt flags */
+		if (reg_rx_stat)
+			reg_msr |= REG_MSR_RX_INT;
+		else
+			reg_msr &= ~REG_MSR_RX_INT;
+
+		if (reg_tx_stat)
+			reg_msr |= REG_MSR_TX_INT;
+		else
+			reg_msr &= ~REG_MSR_TX_INT;
+
+		/* Assert or disassert interrupt pin */
+		if (reg_msr && (reg_mcr & REG_MCR_IRQ_EN))
+			ASSERT_NINTERRUPT;
+		else
+			DISASSERT_NINTERRUPT;
 	}
+}
+
+
+/*!
+ * Apply the configuration specified in the registers.
+ */
+void apply(void) {
+	/* Figure out a valid baud rate */
+	const struct baud_t* baud = standard_rates;
+	uint8_t data_sz, stop_sz, parity;
+	uint32_t cfg;
+
+	while ((baud->baudrate) && (baud->baudrate != reg_baud))
+		baud++;
+
+	if (!baud->baudrate) {
+		/* Baud rate not valid */
+		goto invalid;
+	}
+
+	/* Sanity check the other settings */
+	data_sz = (reg_frame >> REG_FRAME_SZ_OFFSET) & REG_FRAME_SZ_MASK;
+	stop_sz = (reg_frame >> REG_FRAME_STOP_OFFSET)
+		& REG_FRAME_STOP_MASK;
+	parity = (reg_frame >> REG_FRAME_PARITY_OFFSET)
+		& REG_FRAME_PARITY_MASK;
+
+	/* Initial bits */
+	cfg =	(1 << 0);	/* Enable the USART */
+
+	/* UM10601 section 15.6.1 bits 3:2 */
+	switch (data_sz) {
+		case REG_FRAME_SZ_7BIT:
+			cfg |= (0x00 << 2);
+			break;
+		case REG_FRAME_SZ_8BIT:
+			cfg |= (0x01 << 2);
+			break;
+		default:
+			goto invalid;
+	}
+
+	/* We basically copy the others straight from NXP's datasheet */
+	switch (parity) {
+		case REG_FRAME_PARITY_NONE:
+		case REG_FRAME_PARITY_ODD:
+		case REG_FRAME_PARITY_EVEN:
+			cfg |= (parity << 4);
+			break;
+		default:
+			goto invalid;
+	}
+
+	if (stop_sz)
+		cfg |= (1 << 6);
+
+	/* All good, apply the settings */
+	LPC_SYSCON->UARTCLKDIV = baud->uartclkdiv;
+	LPC_SYSCON->UARTFRGDIV = baud->uartfrgdiv;
+	LPC_SYSCON->UARTFRGMULT = baud->uartfrgmult;
+	LPC_USART0->CFG = cfg;
+	LPC_USART0->BRG = baud->brgval;
+	reg_msr &= ~REG_MSR_CFG_ERR;
+	return;
+invalid:
+	reg_msr |= REG_MSR_CFG_ERR;
 }
 
 
