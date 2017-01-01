@@ -414,6 +414,9 @@ uint8_t reg_frame = 0;
 /*! UART baud rate register.  Given in big-endian format. */
 uint32_t reg_baud = 0;
 
+/*! Configured baud rate, for easy reverting */
+uint32_t cfg_baud = 0;
+
 /*! Address of baud rate register */
 #define REG_BAUD_ADDR		(0x10)
 
@@ -783,6 +786,7 @@ void apply(void) {
 	LPC_SYSCON->UARTFRGMULT = baud->uartfrgmult;
 	LPC_USART0->CFG = cfg;
 	LPC_USART0->BRG = baud->brgval;
+	cfg_baud = reg_baud;
 	reg_msr &= ~REG_MSR_CFG_ERR;
 	return;
 invalid:
