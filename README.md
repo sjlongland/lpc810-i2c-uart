@@ -77,7 +77,89 @@ Identification registers:
   The raw string, "VK4MSL I2CUART", used for debugging with i2cread, etc.
 * Address 0x0e: Firmware version major number (currently 0)
 * Address 0x0f: Firmware version minor number (currently 0)
-* Address 0x10…0x7f: Reserved (reads as 0xff)
+
+* Address 0x14: Frame configuration register
+  - Bits 7…5: Number of data bits
+    - 15…9: Reserved
+    - 8: 8 bits
+    - 7: 7 bits
+    - 5…0: Reserved
+  - Bit 4: Number of stop bits
+    - 1: 2 bits
+    - 0: 1 bit
+  - Bits 3…2: Parity settings
+    - 3: Even parity
+    - 2: Odd parity
+    - 1: Reserved (do not use)
+    - 0: No parity
+  - Bits 1…0: Reserved.
+* Address 0x15: Master Interrupt Acknowledge register.  This acknowledges
+  bits that have been set in the status register.
+* Address 0x16: Master Interrupt Enable register.  This enables select
+  interrupt flags.  If the corresponding bits in the Status register are
+  set *AND* `nINTERRUPT` is enabled (bit 5, master control register), then
+  the `nINTERRUPT` line will be held low until all bits are cleared.
+* Address 0x17: Master control register
+  - Bit 7: Apply currently configured settings, attempts to set the UART
+    interface according to the settings given.
+  - Bit 6: Revert currently configured settings, rolls back the
+    configuration to one consistent with the UARTs current settings.
+  - Bit 5: Enable/Disable `nINTERRUPT`.  If enabled, the `nINTERRUPT`
+    pin will be held logic high until an interrupt condition occurrs,
+    in which case the pin will be pulled low.
+    If disabled, the pin floats, and should be pulled high by an
+    external resistor.
+  - Bit 4: Transmitter Enable/Disable.  If disabled, data is held in the
+    transmit buffers until the transmitter is re-enabled.
+  - Bits 3…0: Reserved.
+* Address: 0x18: Master Status Register
+  - Bit 7: Configurtion error.  An attempt to apply settings has failed
+    due to an invalid combination of settings.
+  - Bit 6: Frame Error.  An invalid UART frame was received.
+  - Bit 5: Break detected.  A BREAK signal was detected on the UART.
+  - Bit 4…2: Reserved.
+  - Bit 1: Transmit interrupt raised, one or more bits are set in `TX_STAT`.
+  - Bit 0: Receive interrupt raised, one or more bits are set in `RX_STAT`.
+* Address 0x19…0x22: Reserved (reads as 0xff)
+* Address 0x23: Receive buffer minimum fill level register.
+* Address 0x24: Receive buffer maximum fill level register.
+* Address 0x25: Receive interrupt acknowledge register.
+* Address 0x26: Receive interrupt enable register.
+* Address 0x27: Receive buffer control register:
+  - Bit 7: Flush receive buffer
+  - Bits 6…0: Reserved (write only zeroes)
+* Address 0x28: Receive buffer status register:
+  - Bit 7: Receive buffer overflow.  A received byte has been dropped
+    because the buffer is full.
+  - Bit 6: Receive buffer full.  The receive buffer is now full and will
+    begin dropping incoming data unless emptied.
+  - Bit 5: Receive buffer maximum bytes waiting.  The maximum fill level
+    has been reached.
+  - Bit 4: Receive buffer minimum bytes waiting.  The minimum fill level
+    has been reached.
+  - Bit 3: Receive buffer is empty.
+* Address 0x29: Receive buffer bytes waiting.
+* Address 0x2a: Receive buffer bytes free.
+* Address 0x2b…0x32: Reserved
+* Address 0x33: Transmit buffer minimum fill level register.
+* Address 0x34: Transmit buffer maximum fill level register.
+* Address 0x35: Transmit interrupt acknowledge register.
+* Address 0x36: Transmit interrupt enable register.
+* Address 0x37: Transmit buffer control register:
+  - Bit 7: Flush transmit buffer
+  - Bits 6…0: Reserved (write only zeroes)
+* Address 0x38: Transmit buffer status register:
+  - Bit 7: Transmit buffer overflow.  A transmitted byte has been dropped
+    because the buffer is full.
+  - Bit 6: Transmit buffer full.  The transmit buffer is now full and will
+    begin dropping incoming data unless emptied.
+  - Bit 5: Transmit buffer maximum bytes waiting.  The maximum fill level
+    has been reached.
+  - Bit 4: Transmit buffer minimum bytes waiting.  The minimum fill level
+    has been reached.
+  - Bit 3: Transmit buffer is empty.
+* Address 0x39: Transmit buffer bytes waiting.
+* Address 0x3a: Transmit buffer bytes free.
 * Address 0x80…0xff: FIFO buffer
 
 FIFO read/write operation
