@@ -229,8 +229,7 @@ void I2C_IRQHandler(void) {
 			I2C_ACK;
 		}
 
-		I2C_NEXT;
-		return;
+		goto done_noinc;
 	} else if (state == SLVSTATE_S2M) {
 		/* Read the next byte off the register bus */
 		uint8_t byte = 0;
@@ -263,8 +262,7 @@ void I2C_IRQHandler(void) {
 			i2c_rx_reg_addr = 0;
 			/* Do not increment, ACK and return */
 			I2C_ACK;
-			I2C_NEXT;
-			return;
+			goto done_noinc;
 		} else {
 			/* Write the incoming byte to the given address */
 			if (!(i2c_reg_addr & 0xf0)) {
@@ -281,5 +279,6 @@ void I2C_IRQHandler(void) {
 done:
 	/* Increment the pointer */
 	i2c_reg_addr++;
+done_noinc:
 	I2C_NEXT;
 }
